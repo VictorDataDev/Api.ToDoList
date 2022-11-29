@@ -1,4 +1,5 @@
 ﻿using Api.ToDoList.Application.Entities;
+using Api.ToDoList.Infrastructure.Cache;
 using Api.ToDoList.Infrastructure.DataPersistence;
 using Api.ToDoList.Models.Request;
 using Microsoft.AspNetCore.Mvc;
@@ -13,10 +14,12 @@ namespace Api.ToDoList.Controllers
     public class ToDoController : ControllerBase
     {
         private readonly ToDoDbContext _context;
+        private readonly ICachingService _cache;
 
-        public ToDoController(ToDoDbContext context)
+        public ToDoController(ToDoDbContext context, ICachingService cache)
         {
             _context = context;
+            _cache = cache;
         }
 
         [HttpGet]
@@ -25,10 +28,23 @@ namespace Api.ToDoList.Controllers
         [Route("{id}")]
         public async Task<ActionResult> GetById(int id)
         {
-            ToDo? todo = await _context.ToDos.SingleOrDefaultAsync(t => t.Id == id);
+            var cache = await _cache.GetAsync(id.ToString());
+
+            ToDo? todo;
+
+            if (!string.IsNullOrEmpty(cache))
+            {
+                todo = JsonConvert.DeserializeObject<ToDo>(cache);
+
+                return Ok(todo);
+            }
+
+            todo = await _context.ToDos.SingleOrDefaultAsync(t => t.Id == id);
 
             if (todo == null)
                 return NotFound();
+
+            await _cache.SetAsync(id.ToString(), JsonConvert.SerializeObject(todo));
 
             return Ok(todo);
         }
